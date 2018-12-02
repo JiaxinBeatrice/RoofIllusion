@@ -3,7 +3,7 @@
 in vec3 position;
 in vec3 inNormal;
 
-const vec3 inLightDir = normalize(vec3(0,0,-1));
+const vec3 inLightDir = normalize(vec3(0,1,-.3));
 
 out vec3 Color;
 out vec3 Normal;

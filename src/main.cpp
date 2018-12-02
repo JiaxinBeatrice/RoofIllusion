@@ -25,16 +25,16 @@ using namespace std;
 int VertParams = 6;
 int screenWidth = 800;
 int screenHeight = 600;
-float timePast = 0;
 
 float linSpeed = .1;
 // (-2.5, 5.8, 6.11||5.55)
-float posx=-2.5, posy=5.8, posz=5.8;
-float dirx=-posx, diry=-posy, dirz=-posz ;
+float posx=-3.779011, posy=-3.737073, posz=5.000001;
+float ballx=-.92f, bally=-.6f, ballz=-10;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 void drawGeometry(int shaderProgram, std::vector<int> start);
+void ballFalling();
 
 bool fullscreen = false;
 
@@ -76,8 +76,7 @@ int main(int argc, char *argv[]){
     string command;
     float x, y, z;
 
-    //Lode cute magnet
-
+    //Lode roof
     std::vector<float> roof;
     modelFile.open("models/roof.obj");
     while(modelFile >> command){
@@ -108,8 +107,74 @@ int main(int argc, char *argv[]){
     totalNumVerts += (int)roof.size()/VertParams;
     start.push_back(totalNumVerts);
 
+    // Load sphere
+    std::vector<float> sphere;
+    modelFile.open("models/sphere.obj");
+    while(modelFile >> command){
+        if(command == "v"){
+            modelFile >> x >> y >> z;
+            v.push_back(x);v.push_back(y);v.push_back(z);
+        }else if(command == "vn"){
+            modelFile >> x >> y >> z;
+            vn.push_back(x);vn.push_back(y);vn.push_back(z);
+        }else if(command == "f"){
+            string a;
+            int num;
+            for (int i=0; i<3; i++){
+                modelFile >> a;
+                num = std::stoi(a.substr(0, a.find('/')))-1;
+                a = a.substr(a.find('/')+2);
+                sphere.push_back(v[num*3]);sphere.push_back(v[num*3+1]);sphere.push_back(v[num*3+2]);
+                num = std::stoi(a)-1;
+                sphere.push_back(vn[num*3]);sphere.push_back(vn[num*3+1]);sphere.push_back(vn[num*3+2]);
+            }
+
+        }else{
+            getline(modelFile, line);
+        }
+    }
+    v.resize(0);vn.resize(0);
+    modelFile.close();
+    totalNumVerts += (int)sphere.size()/VertParams;
+    start.push_back(totalNumVerts);
+
+    // Load ground
+    std::vector<float> ground;
+    modelFile.open("models/ground.obj");
+    while(modelFile >> command){
+        if(command == "v"){
+            modelFile >> x >> y >> z;
+            v.push_back(x);v.push_back(y);v.push_back(z);
+        }else if(command == "vn"){
+            modelFile >> x >> y >> z;
+            vn.push_back(x);vn.push_back(y);vn.push_back(z);
+        }else if(command == "f"){
+            string a;
+            int num;
+            for (int i=0; i<3; i++){
+                modelFile >> a;
+                num = std::stoi(a.substr(0, a.find('/')))-1;
+                a = a.substr(a.find('/')+2);
+                ground.push_back(v[num*3]);ground.push_back(v[num*3+1]);ground.push_back(v[num*3+2]);
+                num = std::stoi(a)-1;
+                ground.push_back(vn[num*3]);ground.push_back(vn[num*3+1]);ground.push_back(vn[num*3+2]);
+            }
+
+        }else{
+            getline(modelFile, line);
+        }
+    }
+    v.resize(0);vn.resize(0);
+    modelFile.close();
+    totalNumVerts += (int)ground.size()/VertParams;
+    start.push_back(totalNumVerts);
+
     float* modelData = new float[totalNumVerts*VertParams];
     copy(roof.begin(), roof.end(), modelData+start[0]*VertParams);
+    copy(sphere.begin(), sphere.end(), modelData+start[1]*VertParams);
+    copy(ground.begin(), ground.end(), modelData+start[2]*VertParams);
+
+    roof.resize(0);sphere.resize(0);ground.resize(0);
 
     //Build a Vertex Array Object (VAO) to store mapping of shader attributse to VBO
     GLuint vao;
@@ -149,18 +214,18 @@ int main(int argc, char *argv[]){
     SDL_Event windowEvent;
     bool quit = false;
     while (!quit){
-        while (SDL_PollEvent(&windowEvent)){  //inspect all events in the queue
+        while (SDL_PollEvent(&windowEvent)){ 
             if (windowEvent.type == SDL_QUIT) quit = true;
             //List of keycodes: https://wiki.libsdl.org/SDL_Keycode - You can catch many special keys
             //Scancode referes to a keyboard position, keycode referes to the letter (e.g., EU keyboards)
             if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_ESCAPE) quit = true; //Exit event loop
-            if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_f){ //If "f" is pressed
+            if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_f){
                 fullscreen = !fullscreen;
                 SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN : 0); //Toggle fullscreen
             }
 
-            if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_UP){ //If "up key" is pressed
-                if (windowEvent.key.keysym.mod & KMOD_SHIFT) posz += .2; //Is shift pressed?
+            if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_UP){
+                if (windowEvent.key.keysym.mod & KMOD_SHIFT) posz += .2;
                 else{
                     posx += linSpeed*posx;
                     posy += linSpeed*posy;
@@ -168,7 +233,7 @@ int main(int argc, char *argv[]){
                 }
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
             }
-            if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_DOWN){ //If "down key" is pressed
+            if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_DOWN){
                 if (windowEvent.key.keysym.mod & KMOD_SHIFT) posz -= .2; //Is shift pressed?
                 else{
                     posx -= linSpeed*posx;
@@ -178,18 +243,17 @@ int main(int argc, char *argv[]){
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_LEFT){
-                posx = cos(2*PI/180.0)*posx - sin(2*PI/180.0)*posy;
-                posy = sin(2*PI/180.0)*posx + cos(2*PI/180.0)*posy;
+                posx = cos(PI/90.0)*posx - sin(PI/90.0)*posy;
+                posy = sin(PI/90.0)*posx + cos(PI/90.0)*posy;
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
-                // dirx = cos(PI/180.0)*dirx - sin(PI/180.0)*diry;
-                // diry = sin(PI/180.0)*dirx + cos(PI/180.0)*diry;
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_RIGHT){
-                posx = cos(2*PI/180.0)*posx + sin(2*PI/180.0)*posy;
-                posy = -sin(2*PI/180.0)*posx + cos(2*PI/180.0)*posy;
+                posx = cos(PI/90.0)*posx + sin(PI/90.0)*posy;
+                posy = -sin(PI/90.0)*posx + cos(PI/90.0)*posy;
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
-                // dirx = cos(PI/180.0)*dirx + sin(PI/180.0)*diry;
-                // diry = -sin(PI/180.0)*dirx + cos(PI/180.0)*diry;
+            }
+            if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
+                ballz = 3;
             }
         }
 
@@ -198,12 +262,11 @@ int main(int argc, char *argv[]){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
-        timePast = SDL_GetTicks()/1000.f;
+        ballFalling();
 
         glm::mat4 view = glm::lookAt(
         glm::vec3(posx, posy, posz),  //Cam Position
         glm::vec3(posx, posy, posz) - glm::normalize(glm::vec3(posx, posy, posz)),
-        // glm::vec3(posx+dirx, posy+diry, posz+dirz),  //Look at point
         glm::vec3(0.0f, 0.0f, 1.0f)); //Up
         glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -226,6 +289,10 @@ int main(int argc, char *argv[]){
     return 0;
 }
 
+void ballFalling(){
+    ballz -=.01;
+    printf("ball: %f, %f, %f\n", ballx, bally, ballz);
+}
 
 void drawGeometry(int shaderProgram, std::vector<int> start){
 
@@ -234,14 +301,31 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     glm::mat4 model;
     glm::vec3 color;
 
+    // Roof
     model = glm::mat4();
-    // model = glm::rotate(model,timePast * 3.14f/2,glm::vec3(0.0f, 1.0f, 1.0f));
-    // model = glm::rotate(model,timePast * 3.14f/4,glm::vec3(1.0f, 0.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(1.2f, 1.2f, 1.2f));
     color = glm::vec3(1,1,1);
     glUniform3fv(uniColor, 1, glm::value_ptr(color));
     glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
     glDrawArrays(GL_TRIANGLES, start[0], start[1]-start[0]);
+
+    // Ball
+    model = glm::mat4();
+    color = glm::vec3(1,0,1);
+    model = glm::translate(model, glm::vec3(ballx,bally,ballz));
+    model = glm::scale(model, .5f*glm::vec3(1.f,1.f,1.f));
+    glUniform3fv(uniColor, 1, glm::value_ptr(color));
+    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+    glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
+
+    // Ground
+    model = glm::mat4();
+    color = glm::vec3(0,.819,.698);
+    model = glm::translate(model, glm::vec3(0,0,-1.f));
+    model = glm::scale(model, glm::vec3(9.f,9.f,1.f));
+    glUniform3fv(uniColor, 1, glm::value_ptr(color));
+    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+    glDrawArrays(GL_TRIANGLES, start[2], start[3]-start[2]);
+
 
 }
 
