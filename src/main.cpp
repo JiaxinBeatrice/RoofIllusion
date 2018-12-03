@@ -27,9 +27,12 @@ int screenWidth = 800;
 int screenHeight = 600;
 
 float linSpeed = .1;
-// (-2.5, 5.8, 6.11||5.55)
 float posx=-3.779011, posy=-3.737073, posz=5.000001;
 float ballx=-.92f, bally=-.6f, ballz=-10;
+float t0 = 0;
+float ballr=0.5; // radius = ballr/2;a
+bool first = true;
+glm::vec3 ball_origin;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
@@ -213,8 +216,9 @@ int main(int argc, char *argv[]){
     //Event Loop (Loop forever processing each event as fast as possible)
     SDL_Event windowEvent;
     bool quit = false;
+    bool fall = false;
     while (!quit){
-        while (SDL_PollEvent(&windowEvent)){ 
+        while (SDL_PollEvent(&windowEvent)){
             if (windowEvent.type == SDL_QUIT) quit = true;
             //List of keycodes: https://wiki.libsdl.org/SDL_Keycode - You can catch many special keys
             //Scancode referes to a keyboard position, keycode referes to the letter (e.g., EU keyboards)
@@ -253,7 +257,13 @@ int main(int argc, char *argv[]){
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
-                ballz = 3;
+                ballx=-1.8f;
+                bally=-.6f;
+                ballz = 5;
+                ball_origin = glm::vec3(ballx, bally, ballz);
+                t0 = SDL_GetTicks()/1000.f;
+                fall = true;
+                first = true;
             }
         }
 
@@ -262,7 +272,7 @@ int main(int argc, char *argv[]){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
-        ballFalling();
+        if(fall)ballFalling();
 
         glm::mat4 view = glm::lookAt(
         glm::vec3(posx, posy, posz),  //Cam Position
@@ -290,7 +300,45 @@ int main(int argc, char *argv[]){
 }
 
 void ballFalling(){
-    ballz -=.01;
+    // ballz -=.05;
+    float t1 = SDL_GetTicks()/1000.f;
+    float g = 4.9f;
+    float v1 = 0;
+    // normal of the surface
+    glm::vec3 n = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
+    glm::vec3 n2 = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
+    float sin = .51/glm::length(glm::vec3(-0.92f, 0.f, .51f));
+    int state = 1;
+
+    if(glm::dot(glm::vec3(ballx, bally, ballz) - 0.25f*ballr*n - glm::vec3(-.92f, -.6f, 1.51f), n) < 0.001){
+        state = 1;
+        if(first){
+            ball_origin = glm::vec3(ballx, bally, ballz);
+            first = false;
+            t0 = SDL_GetTicks()/1000.f;
+        }
+    }
+    else if(glm::dot(glm::vec3(ballx, bally, ballz) - 0.25f*ballr*n - glm::vec3(0.2f, -0.4f, 1.89f), n2) < 0.001){
+        state = 2;
+    }
+    else {
+        state = 0;
+    }
+
+    if(state == 0){
+        ballz = ball_origin.z - g*(t1-t0)*(t1-t0);
+        v1 = g*(t1-t0);
+    }
+    else if(state == 1){
+        // sin = 0.2;
+        float cos = sqrt(1 - sin*sin);
+
+        ballx = ball_origin.x + v1*(t1-t0)*(cos/sin) + g*(t1-t0)*(t1-t0)*(cos/sin);
+        ballz = ball_origin.z - v1*(t1-t0) - g*(t1-t0)*(t1-t0);
+
+    }
+
+    // cout << sin << endl;
     printf("ball: %f, %f, %f\n", ballx, bally, ballz);
 }
 
@@ -309,10 +357,10 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     glDrawArrays(GL_TRIANGLES, start[0], start[1]-start[0]);
 
     // Ball
-    model = glm::mat4();
     color = glm::vec3(1,0,1);
+    model = glm::mat4();
     model = glm::translate(model, glm::vec3(ballx,bally,ballz));
-    model = glm::scale(model, .5f*glm::vec3(1.f,1.f,1.f));
+    model = glm::scale(model, ballr*glm::vec3(1.f,1.f,1.f));
     glUniform3fv(uniColor, 1, glm::value_ptr(color));
     glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
     glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
