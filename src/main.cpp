@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <iostream>
 #include <fstream>
+#include <SFML/Audio.hpp>
 #include <string>
 #include <vector>
 #include <math.h>
@@ -27,19 +28,21 @@ int screenWidth = 800;
 int screenHeight = 600;
 
 float linSpeed = .1;
-float posx=-3.779011, posy=-3.737073, posz=5.000001;
-float ballx=-.92f, bally=-.6f, ballz=-10;
+glm::vec3 pos_reset = glm::vec3(-3.779011, -3.737073, 5.000001);
+glm::vec3 pos = pos_reset;
+glm::vec3 ball_origin;
+glm::vec3 ball = glm::vec3(-.92f, -.6f, -10);
 float t0 = 0;
 float ballr=0.25;
 int state;
 float v1 = 0;
 float a = 4.9f;
-glm::vec3 ball_origin;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 void drawGeometry(int shaderProgram, std::vector<int> start);
 void ballFalling();
+void playSound();
 
 bool fullscreen = false;
 
@@ -229,40 +232,36 @@ int main(int argc, char *argv[]){
                 fullscreen = !fullscreen;
                 SDL_SetWindowFullscreen(window, fullscreen ? SDL_WINDOW_FULLSCREEN : 0); //Toggle fullscreen
             }
-
+            if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r){
+                pos = pos_reset;
+            }            
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_UP){
-                if (windowEvent.key.keysym.mod & KMOD_SHIFT) posz += .3;
+                if (windowEvent.key.keysym.mod & KMOD_SHIFT) pos.z += .3;
                 else{
-                    posx += linSpeed*posx;
-                    posy += linSpeed*posy;
-                    posz += linSpeed*posz;
+                    pos += linSpeed * pos;
                 }
-                printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
+                printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_DOWN){
-                if (windowEvent.key.keysym.mod & KMOD_SHIFT) posz -= .3; //Is shift pressed
+                if (windowEvent.key.keysym.mod & KMOD_SHIFT) pos.z -= .3; //Is shift pressed
                 else{
-                    posx -= linSpeed*posx;
-                    posy -= linSpeed*posy;
-                    posz -= linSpeed*posz;
+                    pos -= linSpeed * pos;
                 }
-                printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
+                printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_LEFT){
-                posx = cos(PI/90.0)*posx - sin(PI/90.0)*posy;
-                posy = sin(PI/90.0)*posx + cos(PI/90.0)*posy;
-                printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
+                pos.x = cos(PI/90.0)*pos.x - sin(PI/90.0)*pos.y;
+                pos.y = sin(PI/90.0)*pos.x + cos(PI/90.0)*pos.y;
+                printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_RIGHT){
-                posx = cos(PI/90.0)*posx + sin(PI/90.0)*posy;
-                posy = -sin(PI/90.0)*posx + cos(PI/90.0)*posy;
-                printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
+                pos.x = cos(PI/90.0)*pos.x + sin(PI/90.0)*pos.y;
+                pos.y = -sin(PI/90.0)*pos.x + cos(PI/90.0)*pos.y;
+                printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
-                ballx=-1.8f;
-                bally=-.6f;
-                ballz = 2.5f;
-                ball_origin = glm::vec3(ballx, bally, ballz);
+                ball = glm::vec3(-1.8f, -.6f, 2.5f);
+                ball_origin = ball;
                 t0 = SDL_GetTicks()/1000.f;
                 fall = true;
                 state = 0;
@@ -280,8 +279,8 @@ int main(int argc, char *argv[]){
         if(fall)ballFalling();
 
         glm::mat4 view = glm::lookAt(
-        glm::vec3(posx, posy, posz),  //Cam Position
-        glm::vec3(posx, posy, posz) - glm::normalize(glm::vec3(posx, posy, posz)),
+        pos,  //Cam Position
+        pos - glm::normalize(pos),
         glm::vec3(0.0f, 0.0f, 1.0f)); //Up
         glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
 
@@ -316,47 +315,49 @@ void ballFalling(){
      */
     if(state == 0){
         glm::vec3 n = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
-        if(glm::dot(glm::normalize(glm::vec3(ballx, bally, ballz) - 0.5f*ballr*n - glm::vec3(-.92f, -.6f, 1.51f)), n) < 0.01){
+        if(glm::dot(glm::normalize(ball - 0.5f*ballr*n - glm::vec3(-.92f, -.6f, 1.51f)), n) < 0.01){
             state = 1;
-            ball_origin = glm::vec3(ballx, bally, ballz);
+            playSound();
+            ball_origin = ball;
             t0 = SDL_GetTicks()/1000.f;
             a = a/3;
         }
         else{
-            ballz = ball_origin.z - a*(t1-t0)*(t1-t0);
+            ball.z = ball_origin.z - a*(t1-t0)*(t1-t0);
             v1 = a*(t1-t0);
         }
     }
     else if(state == 1){
         glm::vec3 n2 = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
-        if(glm::dot(glm::normalize(glm::vec3(ballx, bally, ballz) - 0.85f*ballr*n2 - glm::vec3(0.2f, -0.4f, 1.89f)), n2) < 0.01) {
+        if(glm::dot(glm::normalize(ball - 0.85f*ballr*n2 - glm::vec3(0.2f, -0.4f, 1.89f)), n2) < 0.01) {
             state = 2;
+            playSound();
             v1 = (v1 + a*(t1-t0))/3.5f;
             t0 = SDL_GetTicks()/1000.f;
-            ball_origin = glm::vec3(ballx, bally, ballz);
+            ball_origin = ball;
             if(v1<0)state=3;
             
         }
         else {
             float cos = sqrt(1 - sin*sin);
 
-            ballx = ball_origin.x + v1*(t1-t0)*(cos/sin) + a*(t1-t0)*(t1-t0)*(cos/sin);
-            ballz = ball_origin.z - v1*(t1-t0) - a*(t1-t0)*(t1-t0);      
+            ball.x = ball_origin.x + v1*(t1-t0)*(cos/sin) + a*(t1-t0)*(t1-t0)*(cos/sin);
+            ball.z = ball_origin.z - v1*(t1-t0) - a*(t1-t0)*(t1-t0);      
         }
     }
     else if(state == 2){
         if((v1 - a*(t1-t0))<0.01){
             state = 1;
-            ball_origin = glm::vec3(ballx, bally, ballz);
+            ball_origin = ball;
             v1 = 0;
             t0 = SDL_GetTicks()/1000.f;
             
         }
         else {
             float cos = sqrt(1 - sin*sin);
-            float tmp = ballz;
-            ballx = ball_origin.x - v1*(t1-t0)*(cos/sin) - a*(t1-t0)*(t1-t0)*(cos/sin);
-            ballz = ball_origin.z + v1*(t1-t0) + a*(t1-t0)*(t1-t0);
+            float tmp = ball.z;
+            ball.x = ball_origin.x - v1*(t1-t0)*(cos/sin) - a*(t1-t0)*(t1-t0)*(cos/sin);
+            ball.z = ball_origin.z + v1*(t1-t0) + a*(t1-t0)*(t1-t0);
             // cout<<"x diff: "<< abs(tmp-ballz)/(t1-t0) << endl;
             
         }
@@ -385,11 +386,8 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     color = glm::vec3(1,0,1);
     model = glm::mat4();
     float time = SDL_GetTicks()/1000.f;
-    model = glm::translate(model, glm::vec3(ballx,bally,ballz));
-    
+    model = glm::translate(model, ball);
     model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
-    // model = glm::rotate(model,time * 3.14f/2,glm::vec3(0.0f, 1.0f, 0.0f));
-   
     glUniform3fv(uniColor, 1, glm::value_ptr(color));
     glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
     glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
@@ -406,6 +404,35 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
 
 }
 
+void playSound()
+{
+    // Load a sound buffer from a wav file
+    sf::SoundBuffer buffer;
+    if (!buffer.loadFromFile("tennis.wav"))
+        return;
+
+    // Display sound informations
+    std::cout << "bounce.wav:" << std::endl;
+    std::cout << " " << buffer.getDuration().asSeconds() << " seconds"       << std::endl;
+    std::cout << " " << buffer.getSampleRate()           << " samples / sec" << std::endl;
+    std::cout << " " << buffer.getChannelCount()         << " channels"      << std::endl;
+
+    // Create a sound instance and play it
+    sf::Sound sound(buffer);
+    sound.play();
+
+    // Loop while the sound is playing
+    while (sound.getStatus() == sf::Sound::Playing)
+    {
+        // Leave some CPU time for other processes
+        sf::sleep(sf::milliseconds(100));
+
+        // Display the playing position
+        std::cout << "\rPlaying... " << sound.getPlayingOffset().asSeconds() << " sec        ";
+        std::cout << std::flush;
+    }
+    std::cout << std::endl << std::endl;
+}
 
 // Create a NULL-terminated string by reading the provided file
 static char* readShaderSource(const char* shaderFile){
