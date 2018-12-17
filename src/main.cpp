@@ -30,13 +30,13 @@ int screenHeight = 600;
 float linSpeed = .1;
 glm::vec3 pos_reset = glm::vec3(-3.779011, -3.737073, 5.000001);
 glm::vec3 pos = pos_reset;
-glm::vec3 ball_origin;
-glm::vec3 ball = glm::vec3(-.92f, -.6f, -10);
-float t0 = 0;
+std::vector<glm::vec3> ball_origin;
+std::vector<glm::vec3> balls;
+std::vector<float> t0;
+std::vector<float> v1;
+std::vector<float> a;
+std::vector<int> state;
 float ballr=0.25;
-int state;
-float v1 = 0;
-float a = 4.9f;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
@@ -221,7 +221,6 @@ int main(int argc, char *argv[]){
     //Event Loop (Loop forever processing each event as fast as possible)
     SDL_Event windowEvent;
     bool quit = false;
-    bool fall = false;
     while (!quit){
         while (SDL_PollEvent(&windowEvent)){
             if (windowEvent.type == SDL_QUIT) quit = true;
@@ -260,14 +259,12 @@ int main(int argc, char *argv[]){
                 printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
-                ball = glm::vec3(-1.8f, -.6f, 2.5f);
-                ball_origin = ball;
-                t0 = SDL_GetTicks()/1000.f;
-                fall = true;
-                state = 0;
-                v1 = 0;
-                a = 4.9f;
-                // cnt = 0;
+                balls.push_back(glm::vec3(-1.8f, -.6f, 2.5f));
+                ball_origin.push_back(glm::vec3(-1.8f, -.6f, 2.5f));
+                t0.push_back(SDL_GetTicks()/1000.f);
+                state.push_back(0);
+                v1.push_back(0);
+                a.push_back(4.9f);
             }
         }
 
@@ -276,7 +273,7 @@ int main(int argc, char *argv[]){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
-        if(fall)ballFalling();
+        ballFalling();
 
         glm::mat4 view = glm::lookAt(
         pos,  //Cam Position
@@ -306,66 +303,60 @@ int main(int argc, char *argv[]){
 void ballFalling(){
 
     float t1 = SDL_GetTicks()/1000.f;
-    float v;
     float sin = .51/glm::length(glm::vec3(-0.92f, 0.f, .51f));
+    float cos = sqrt(1 - sin*sin);
+    glm::vec3 n_long = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
+    glm::vec3 n_short = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
+    glm::vec3 pt_on_long = glm::vec3(-.92f, -.6f, 1.51f);
+    glm::vec3 pt_on_short = glm::vec3(0.2f, -0.4f, 1.89f);
 
     /** finite state machine for the movements
      * 0: dropping from a height
      * 1: sliding down the slope
      */
-    if(state == 0){
-        glm::vec3 n = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
-        if(glm::dot(glm::normalize(ball - 0.5f*ballr*n - glm::vec3(-.92f, -.6f, 1.51f)), n) < 0.01){
-            state = 1;
-            playSound();
-            ball_origin = ball;
-            t0 = SDL_GetTicks()/1000.f;
-            a = a/3;
+    for(int i=0; i<balls.size(); i++){
+        if(state[i] == 0){
+            if(glm::dot(glm::normalize(balls[i] - 0.5f*ballr*n_long - pt_on_long), n_long) < 0.01){
+                state[i] = 1;
+                playSound();
+                ball_origin[i] = balls[i];
+                t0[i] = SDL_GetTicks()/1000.f;
+                a[i] = a[i]/3;
+            }
+            else{
+                balls[i].z = ball_origin[i].z - a[i]*(t1-t0[i])*(t1-t0[i]);
+                v1[i] = a[i]*(t1-t0[i]);
+            }
         }
-        else{
-            ball.z = ball_origin.z - a*(t1-t0)*(t1-t0);
-            v1 = a*(t1-t0);
+        else if(state[i] == 1){
+            if(glm::dot(glm::normalize(balls[i] - 0.85f*ballr*n_short - pt_on_short), n_short) < 0.01) {
+                state[i] = 2;
+                playSound();
+                v1[i] = (v1[i] + a[i]*(t1-t0[i]))/3.5f;
+                t0[i] = SDL_GetTicks()/1000.f;
+                ball_origin[i] = balls[i];
+                if(v1[i]<0)state[i]=3;
+            }
+            else {
+                balls[i].x = ball_origin[i].x + v1[i]*(t1-t0[i])*(cos/sin) + a[i]*(t1-t0[i])*(t1-t0[i])*(cos/sin);
+                balls[i].z = ball_origin[i].z - v1[i]*(t1-t0[i]) - a[i]*(t1-t0[i])*(t1-t0[i]);      
+            }
         }
-    }
-    else if(state == 1){
-        glm::vec3 n2 = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
-        if(glm::dot(glm::normalize(ball - 0.85f*ballr*n2 - glm::vec3(0.2f, -0.4f, 1.89f)), n2) < 0.01) {
-            state = 2;
-            playSound();
-            v1 = (v1 + a*(t1-t0))/3.5f;
-            t0 = SDL_GetTicks()/1000.f;
-            ball_origin = ball;
-            if(v1<0)state=3;
-            
-        }
-        else {
-            float cos = sqrt(1 - sin*sin);
-
-            ball.x = ball_origin.x + v1*(t1-t0)*(cos/sin) + a*(t1-t0)*(t1-t0)*(cos/sin);
-            ball.z = ball_origin.z - v1*(t1-t0) - a*(t1-t0)*(t1-t0);      
-        }
-    }
-    else if(state == 2){
-        if((v1 - a*(t1-t0))<0.01){
-            state = 1;
-            ball_origin = ball;
-            v1 = 0;
-            t0 = SDL_GetTicks()/1000.f;
-            
-        }
-        else {
-            float cos = sqrt(1 - sin*sin);
-            float tmp = ball.z;
-            ball.x = ball_origin.x - v1*(t1-t0)*(cos/sin) - a*(t1-t0)*(t1-t0)*(cos/sin);
-            ball.z = ball_origin.z + v1*(t1-t0) + a*(t1-t0)*(t1-t0);
-            // cout<<"x diff: "<< abs(tmp-ballz)/(t1-t0) << endl;
-            
+        else if(state[i] == 2){
+            if((v1[i] - a[i]*(t1-t0[i]))<0.01){
+                state[i] = 1;
+                ball_origin[i] = balls[i];
+                v1[i] = 0;
+                t0[i] = SDL_GetTicks()/1000.f;
+                
+            }
+            else {
+                float tmp = balls[i].z;
+                balls[i].x = ball_origin[i].x - v1[i]*(t1-t0[i])*(cos/sin) - a[i]*(t1-t0[i])*(t1-t0[i])*(cos/sin);
+                balls[i].z = ball_origin[i].z + v1[i]*(t1-t0[i]) + a[i]*(t1-t0[i])*(t1-t0[i]);            
+            }
         }
     }
-    
-
-    // cout<<state<<endl;
-    // printf("ball: %f, %f, %f\n", ballx, bally, ballz);
 }
 
 void drawGeometry(int shaderProgram, std::vector<int> start){
@@ -383,14 +374,16 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     glDrawArrays(GL_TRIANGLES, start[0], start[1]-start[0]);
 
     // Ball
-    color = glm::vec3(1,0,1);
-    model = glm::mat4();
-    float time = SDL_GetTicks()/1000.f;
-    model = glm::translate(model, ball);
-    model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
-    glUniform3fv(uniColor, 1, glm::value_ptr(color));
-    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-    glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
+    for(int i=0; i<balls.size(); i++){
+        color = glm::vec3(1,0,1);
+        model = glm::mat4();
+        float time = SDL_GetTicks()/1000.f;
+        model = glm::translate(model, balls[i]);
+        model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
+        glUniform3fv(uniColor, 1, glm::value_ptr(color));
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+        glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
+    }
 
     // Ground
     model = glm::mat4();
@@ -411,12 +404,6 @@ void playSound()
     if (!buffer.loadFromFile("tennis.wav"))
         return;
 
-    // Display sound informations
-    std::cout << "bounce.wav:" << std::endl;
-    std::cout << " " << buffer.getDuration().asSeconds() << " seconds"       << std::endl;
-    std::cout << " " << buffer.getSampleRate()           << " samples / sec" << std::endl;
-    std::cout << " " << buffer.getChannelCount()         << " channels"      << std::endl;
-
     // Create a sound instance and play it
     sf::Sound sound(buffer);
     sound.play();
@@ -426,12 +413,7 @@ void playSound()
     {
         // Leave some CPU time for other processes
         sf::sleep(sf::milliseconds(100));
-
-        // Display the playing position
-        std::cout << "\rPlaying... " << sound.getPlayingOffset().asSeconds() << " sec        ";
-        std::cout << std::flush;
     }
-    std::cout << std::endl << std::endl;
 }
 
 // Create a NULL-terminated string by reading the provided file
