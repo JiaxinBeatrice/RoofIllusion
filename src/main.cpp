@@ -30,13 +30,20 @@ int screenHeight = 600;
 float linSpeed = .1;
 glm::vec3 pos_reset = glm::vec3(-3.779011, -3.737073, 5.000001);
 glm::vec3 pos = pos_reset;
-glm::vec3 ball_origin;
-glm::vec3 ball = glm::vec3(-.92f, -.6f, -10);
-float t0 = 0;
+std::vector<glm::vec3> ball_origin;
+std::vector<glm::vec3> balls;
+std::vector<float> t0;
+std::vector<float> v1;
+std::vector<float> a;
+std::vector<int> state;
 float ballr=0.25;
-int state;
-float v1 = 0;
-float a = 4.9f;
+float sin_ = .51/glm::length(glm::vec3(-0.92f, 0.f, .51f));
+float cos_ = sqrt(1 - sin_*sin_);
+glm::vec3 n_long = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
+glm::vec3 n_short = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
+glm::vec3 pt_on_long = glm::vec3(-.92f, -.6f, 1.51f);
+glm::vec3 pt_on_short = glm::vec3(0.2f, -0.4f, 1.89f);
+bool sound_on = false;
 
 bool DEBUG_ON = true;
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
@@ -221,7 +228,7 @@ int main(int argc, char *argv[]){
     //Event Loop (Loop forever processing each event as fast as possible)
     SDL_Event windowEvent;
     bool quit = false;
-    bool fall = false;
+    int cnt = -1;
     while (!quit){
         while (SDL_PollEvent(&windowEvent)){
             if (windowEvent.type == SDL_QUIT) quit = true;
@@ -235,6 +242,9 @@ int main(int argc, char *argv[]){
             if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r){
                 pos = pos_reset;
             }            
+            if (windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_p){
+                sound_on = !sound_on;
+            }  
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_UP){
                 if (windowEvent.key.keysym.mod & KMOD_SHIFT) pos.z += .3;
                 else{
@@ -260,14 +270,26 @@ int main(int argc, char *argv[]){
                 printf("x: %f, y: %f, z: %f\n", pos.x, pos.y, pos.z);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
-                ball = glm::vec3(-1.8f, -.6f, 2.5f);
-                ball_origin = ball;
-                t0 = SDL_GetTicks()/1000.f;
-                fall = true;
-                state = 0;
-                v1 = 0;
-                a = 4.9f;
-                // cnt = 0;
+                cnt++;
+                // balls.push_back(glm::vec3(-1.8f, -.6f, 2.5f));
+                if(cnt>4){
+                    int tmp_c = cnt%5;
+                    balls.at(tmp_c) = glm::vec3(-2.f+.3f*tmp_c, -1.1f + 0.4f*tmp_c, 2.5f-0.2f*tmp_c);
+                    ball_origin.at(tmp_c) = glm::vec3(-2.f+.3f*tmp_c, -1.1f + 0.4f*tmp_c, 2.5f-0.2f*tmp_c);
+                    t0.at(tmp_c)= SDL_GetTicks()/1000.f;
+                    state.at(tmp_c) = 0;
+                    v1.at(tmp_c) = 0;
+                    a.at(tmp_c) = 4.9f;
+                }
+                else {
+                    balls.push_back(glm::vec3(-2.f+.3f*cnt, -1.1f + 0.4f*cnt, 2.5f-0.2*cnt));
+                    ball_origin.push_back(glm::vec3(-2.f+.3f*cnt, -1.1f + 0.4f*cnt, 2.5f-0.2*cnt));
+                    t0.push_back(SDL_GetTicks()/1000.f);
+                    state.push_back(0);
+                    v1.push_back(0);
+                    a.push_back(4.9f);
+                }
+                
             }
         }
 
@@ -276,7 +298,7 @@ int main(int argc, char *argv[]){
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         glUseProgram(shader);
-        if(fall)ballFalling();
+        ballFalling();
 
         glm::mat4 view = glm::lookAt(
         pos,  //Cam Position
@@ -304,71 +326,56 @@ int main(int argc, char *argv[]){
 }
 
 void ballFalling(){
-
-    float t1 = SDL_GetTicks()/1000.f;
-    float sin = .51/glm::length(glm::vec3(-0.92f, 0.f, .51f));
-
     /** finite state machine for the movements
      * 0: dropping from a height
      * 1: sliding down the slope
      * 2: climbing back until v < 0
      */
-    if(state == 0){
-        glm::vec3 n = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
-        if(glm::dot(glm::normalize(ball - 0.5f*ballr*n - glm::vec3(-.92f, -.6f, 1.51f)), n) < 0.01){
-            playSound();
-            state = 1;
-            // playSound();
-            ball_origin = ball;
-            t0 = SDL_GetTicks()/1000.f;
-            a = a/3;
-            
+    for(int i=0; i<balls.size(); i++){
+        float t1 = SDL_GetTicks()/1000.f;
+        if(state[i] == 0){
+            if(glm::dot(glm::normalize(balls[i] - 0.5f*ballr*n_long - pt_on_long), n_long) < 0.01){
+                state[i] = 1;
+                if(sound_on)playSound();
+                ball_origin[i] = balls[i];
+                t0[i] = SDL_GetTicks()/1000.f;
+                a[i] = a[i]/3;
+            }
+            else{
+                balls[i].z = ball_origin[i].z - a[i]*(t1-t0[i])*(t1-t0[i]);
+                v1[i] = a[i]*(t1-t0[i]);
+            }
         }
-        else{
-            ball.z = ball_origin.z - a*(t1-t0)*(t1-t0);
-            v1 = a*(t1-t0);
+        else if(state[i] == 1){
+            if(glm::dot(glm::normalize(balls[i] - 0.85f*ballr*n_short - pt_on_short), n_short) < 0.01) {
+                state[i] = 2;
+                if(sound_on)playSound();
+                // v1[i] = (v1[i] + a[i]*(t1-t0[i]))/(3.5f+0.3*i);
+                v1[i] = (v1[i] + a[i]*(t1-t0[i]))/3.5f;
+                t0[i] = SDL_GetTicks()/1000.f;
+                ball_origin[i] = balls[i];
+                if(v1[i]<0.02)state[i]=3;
+            }
+            else {
+                balls[i].x = ball_origin[i].x + v1[i]*(t1-t0[i])*(cos_/sin_) + a[i]*(t1-t0[i])*(t1-t0[i])*(cos_/sin_);
+                balls[i].z = ball_origin[i].z - v1[i]*(t1-t0[i]) - a[i]*(t1-t0[i])*(t1-t0[i]);      
+            }
         }
-    }
-    else if(state == 1){
-        glm::vec3 n2 = glm::normalize(glm::cross(glm::vec3(-0.2f, 0.4f, -1.89f), glm::vec3(0.f, -2.f, 0.f)));
-        if(glm::dot(glm::normalize(ball - 0.85f*ballr*n2 - glm::vec3(0.2f, -0.4f, 1.89f)), n2) < 0.01) {
-            playSound();
-            state = 2;
-            v1 = (v1 + a*(t1-t0))/3.5f;
-            t0 = SDL_GetTicks()/1000.f;
-            ball_origin = ball;
-            // playSound();
-            if(v1<0.02)state=3;
-            
-        }
-        else {
-            float cos = sqrt(1 - sin*sin);
-
-            ball.x = ball_origin.x + v1*(t1-t0)*(cos/sin) + a*(t1-t0)*(t1-t0)*(cos/sin);
-            ball.z = ball_origin.z - v1*(t1-t0) - a*(t1-t0)*(t1-t0);      
-        }
-    }
-    else if(state == 2){
-        if((v1 - a*(t1-t0))<0.01){
-            state = 1;
-            ball_origin = ball;
-            v1 = 0;
-            t0 = SDL_GetTicks()/1000.f;
-            
-        }
-        else {
-            float cos = sqrt(1 - sin*sin);
-            float tmp = ball.z;
-            ball.x = ball_origin.x - v1*(t1-t0)*(cos/sin) - a*(t1-t0)*(t1-t0)*(cos/sin);
-            ball.z = ball_origin.z + v1*(t1-t0) + a*(t1-t0)*(t1-t0);
-            
+        else if(state[i] == 2){
+            if((v1[i] - a[i]*(t1-t0[i]))<0.01){
+                state[i] = 1;
+                ball_origin[i] = balls[i];
+                v1[i] = 0;
+                t0[i] = SDL_GetTicks()/1000.f;
+                
+            }
+            else {
+                float tmp = balls[i].z;
+                balls[i].x = ball_origin[i].x - v1[i]*(t1-t0[i])*(cos_/sin_) - a[i]*(t1-t0[i])*(t1-t0[i])*(cos_/sin_);
+                balls[i].z = ball_origin[i].z + v1[i]*(t1-t0[i]) + a[i]*(t1-t0[i])*(t1-t0[i]);            
+            }
         }
     }
-    
-    
-
-    // cout<<state<<endl;
-    // printf("ball: %f, %f, %f\n", ballx, bally, ballz);
 }
 
 void drawGeometry(int shaderProgram, std::vector<int> start){
@@ -385,15 +392,19 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
     glDrawArrays(GL_TRIANGLES, start[0], start[1]-start[0]);
 
+    glm::vec3 color_s[5] = {glm::vec3(1,0,0),glm::vec3(1,0.45,0.05),glm::vec3(1,1,0),glm::vec3(0,0.8,0.2),glm::vec3(0,0.1,1)};
     // Ball
-    color = glm::vec3(1,0,1);
-    model = glm::mat4();
-    float time = SDL_GetTicks()/1000.f;
-    model = glm::translate(model, ball);
-    model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
-    glUniform3fv(uniColor, 1, glm::value_ptr(color));
-    glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
-    glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
+    for(int i=0; i<balls.size(); i++){
+        // color = glm::vec3(1,0,1);
+        color = color_s[i];
+        model = glm::mat4();
+        float time = SDL_GetTicks()/1000.f;
+        model = glm::translate(model, balls[i]);
+        model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
+        glUniform3fv(uniColor, 1, glm::value_ptr(color));
+        glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+        glDrawArrays(GL_TRIANGLES, start[1], start[2]-start[1]);
+    }
 
     // Ground
     model = glm::mat4();
