@@ -259,8 +259,8 @@ int main(int argc, char *argv[]){
                 printf("x: %f, y: %f, z: %f\n", posx, posy, posz);
             }
             if (windowEvent.type == SDL_KEYDOWN && windowEvent.key.keysym.sym == SDLK_SPACE){
-                ballx=-1.8f;
-                bally=-.6f;
+                ballx = -1.8f;
+                bally = -.6f;
                 ballz = 2.5f;
                 ball_origin = glm::vec3(ballx, bally, ballz);
                 t0 = SDL_GetTicks()/1000.f;
@@ -313,6 +313,7 @@ void ballFalling(){
     /** finite state machine for the movements
      * 0: dropping from a height
      * 1: sliding down the slope
+     * 2: climbing back until v < 0
      */
     if(state == 0){
         glm::vec3 n = glm::normalize(glm::cross(glm::vec3(0.f, -1.7f, 0.f), glm::vec3(2.3f, -0.6f, -1.28f)));
@@ -388,7 +389,6 @@ void drawGeometry(int shaderProgram, std::vector<int> start){
     model = glm::translate(model, glm::vec3(ballx,bally,ballz));
     
     model = glm::scale(model, 2*ballr*glm::vec3(1.f,1.f,1.f));
-    // model = glm::rotate(model,time * 3.14f/2,glm::vec3(0.0f, 1.0f, 0.0f));
    
     glUniform3fv(uniColor, 1, glm::value_ptr(color));
     glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
